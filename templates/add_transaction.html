@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Add Transaction</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #ticker-results { display: none; }
+        .flash-message { animation: fadeInOut 5s forwards; opacity: 0; }
+        @keyframes fadeInOut {
+            0%, 100% { opacity: 0; transform: translateY(-20px); }
+            10%, 90% { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="fixed top-5 right-5 z-50 w-full max-w-sm">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash-message p-4 mb-2 rounded-lg shadow-lg text-white {{ 'bg-red-600' if category == 'error' else 'bg-green-500' }}">
+                        <p class="font-bold">{{ 'Error' if category == 'error' else 'Success' }}</p>
+                        <p>{{ message }}</p>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+    <div class="container mx-auto p-8">
+        <div class="max-w-2xl mx-auto bg-white p-8 rounded-xl shadow-md">
+            <h1 class="text-3xl font-bold mb-6">Add New Transaction</h1>
+            <form action="{{ url_for('add_transaction') }}" method="POST" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block font-semibold mb-1">Transaction Date</label>
+                        <input type="date" name="date" class="w-full p-3 border rounded-lg" required>
+                    </div>
+                    <div>
+                        <label class="block font-semibold mb-1">Transaction Type</label>
+                        <select name="trans_type" class="w-full p-3 border rounded-lg bg-white" required>
+                            <option>BUY</option>
+                            <option>SELL</option>
+                            <option>DIVIDEND</option>
+                            <option>REWARD</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="relative">
+                        <label class="block font-semibold mb-1">Ticker Symbol</label>
+                        <input type="text" name="symbol" placeholder="Type to search..." class="w-full p-3 border rounded-lg" required autocomplete="off">
+                        <div id="ticker-results" class="absolute z-10 w-full bg-white border rounded-lg mt-1 max-h-60 overflow-y-auto shadow-lg"></div>
+                    </div>
+                    <div>
+                        <label class="block font-semibold mb-1">Group (Optional)</label>
+                        <input type="text" name="group" placeholder="Auto-filled from search" class="w-full p-3 border rounded-lg bg-gray-50">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block font-semibold mb-1">Shares</label>
+                        <input type="number" step="any" name="shares" placeholder="e.g. 10.5" class="w-full p-3 border rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block font-semibold mb-1">Price per Share</label>
+                        <input type="number" step="any" name="price" placeholder="Auto-filled on date selection" class="w-full p-3 border rounded-lg bg-gray-50">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block font-semibold mb-1">Transaction Cost (Optional)</label>
+                        <input type="number" step="any" name="cost" value="0" class="w-full p-3 border rounded-lg">
+                    </div>
+                    <div>
+                        <label class="block font-semibold mb-1">Tax Cost (Optional)</label>
+                        <input type="number" step="any" name="tax" value="0" class="w-full p-3 border rounded-lg">
+                    </div>
+                </div>
+                <div>
+                    <label class="block font-semibold mb-1">Notes (Optional)</label>
+                    <textarea name="notes" rows="3" class="w-full p-3 border rounded-lg" placeholder="Any extra details..."></textarea>
+                </div>
+                <div class="flex gap-4 pt-4">
+                    <button type="submit" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-700 transition">Save Transaction</button>
+                    <a href="{{ url_for('transaction_list') }}" class="w-full text-center bg-gray-200 text-gray-800 font-bold py-3 px-4 rounded-lg hover:bg-gray-300 transition">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+    <script>
+        const tickerInput = document.querySelector('input[name="symbol"]');
+        const groupInput = document.querySelector('input[name="group"]');
+        const priceInput = document.querySelector('input[name="price"]');
+        const dateInput = document.querySelector('input[name="date"]');
+        const typeSelect = document.querySelector('select[name="trans_type"]');
+        const resultsDiv = document.getElementById('ticker-results');
+        let debounceTimer;
+
+        const getApiData = async () => {
+            const ticker = tickerInput.value.trim();
+            const date = dateInput.value;
+            const type = typeSelect.value;
+            if (!ticker || !date) return;
+            
+            let url;
+            if (type === 'DIVIDEND') {
+                url = `/api/get-dividend-info?ticker=${ticker}&date=${date}`;
+            } else if (type === 'BUY' || type === 'SELL') {
+                url = `/api/get-historical-price?ticker=${ticker}&date=${date}`;
+            } else {
+                return; // Do nothing for other types like 'REWARD'
+            }
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('API fetch failed');
+                const data = await response.json();
+                
+                if (data.price) {
+                    priceInput.value = data.price.toFixed(2);
+                } else if (data.dividend_per_share) {
+                    priceInput.value = data.dividend_per_share.toFixed(4);
+                }
+            } catch (error) {
+                console.error('Error fetching data:', error);
+            }
+        };
+
+        tickerInput.addEventListener('input', () => {
+            clearTimeout(debounceTimer);
+            const query = tickerInput.value.trim();
+            if (query.length < 1) { resultsDiv.style.display = 'none'; return; }
+            debounceTimer = setTimeout(async () => {
+                try {
+                    const response = await fetch(`/api/search-tickers?q=${query}`);
+                    const data = await response.json();
+                    resultsDiv.innerHTML = '';
+                    if (data.length > 0) {
+                        resultsDiv.style.display = 'block';
+                        data.slice(0, 7).forEach(stock => {
+                            const item = document.createElement('div');
+                            item.className = 'p-3 hover:bg-gray-100 cursor-pointer border-b';
+                            item.innerHTML = `<div class="font-bold">${stock.symbol}</div><div class="text-sm text-gray-600">${stock.name}</div>`;
+                            item.addEventListener('click', () => {
+                                tickerInput.value = stock.symbol;
+                                groupInput.value = stock.group || '';
+                                resultsDiv.style.display = 'none';
+                                getApiData();
+                            });
+                            resultsDiv.appendChild(item);
+                        });
+                    } else { resultsDiv.style.display = 'none'; }
+                } catch (error) { console.error('Ticker search failed:', error); }
+            }, 300);
+        });
+
+        dateInput.addEventListener('change', getApiData);
+        typeSelect.addEventListener('change', getApiData);
+
+        document.addEventListener('click', (e) => {
+            if (!tickerInput.contains(e.target) && !resultsDiv.contains(e.target)) {
+                resultsDiv.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>

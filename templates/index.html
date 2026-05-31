@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <header class="flex flex-wrap justify-between items-center mb-8 gap-4">
+            <div>
+                <h1 class="text-4xl font-bold text-gray-900">Portfolio Dashboard</h1>
+                <p class="text-gray-600">Calculated from your transaction history.</p>
+            </div>
+            <!-- UPDATED NAVIGATION -->
+            <nav class="flex items-center gap-4 bg-gray-200 p-1 rounded-lg">
+                <a href="{{ url_for('index') }}" class="bg-white text-gray-800 font-bold py-2 px-4 rounded-md shadow">Holdings</a>
+                <a href="{{ url_for('transaction_list') }}" class="text-gray-600 font-semibold py-2 px-4 rounded-md hover:bg-gray-300">Transactions</a>
+                <a href="{{ url_for('dividends_list') }}" class="text-gray-600 font-semibold py-2 px-4 rounded-md hover:bg-gray-300">Dividends</a>
+                <a href="{{ url_for('search_stocks_api') }}" class="text-gray-600 font-semibold py-2 px-4 rounded-md hover:bg-gray-300">Search</a>
+            </nav>
+        </header>
+
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <div class="lg:col-span-1 flex flex-col gap-6">
+                <div class="bg-white p-6 rounded-xl shadow-md">
+                    <h3 class="font-semibold text-gray-500">Total Portfolio Value</h3>
+                    <p class="text-3xl font-bold text-gray-800">${{ "%.2f"|format(summary.total_value) }}</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-md">
+                    <h3 class="font-semibold text-gray-500">Total Profit / Loss</h3>
+                    <p class="text-3xl font-bold {{ 'text-green-600' if summary.total_pl >= 0 else 'text-red-600' }}">
+                        ${{ "%.2f"|format(summary.total_pl) }}
+                    </p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-md">
+                    <h3 class="text-xl font-bold mb-4">Allocation</h3>
+                    <div class="space-y-2">
+                        {% for stock in portfolio %}
+                        <div class="flex justify-between items-center text-sm">
+                            <span class="font-bold">{{ stock.symbol }}</span>
+                            <span class="text-gray-600">{{ "%.2f"|format(stock.allocation) }}%</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2.5">
+                            <div class="bg-blue-600 h-2.5 rounded-full" style="width: {{ stock.allocation }}%"></div>
+                        </div>
+                        {% else %}
+                        <p class="text-gray-500">No holdings to allocate.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="lg:col-span-2 bg-white p-6 rounded-xl shadow-md">
+                <h3 class="text-xl font-bold mb-4">Allocation Chart</h3>
+                <div class="relative h-[28rem]">
+                    <canvas id="portfolioChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <section class="bg-white rounded-xl shadow-md overflow-x-auto">
+            <table class="w-full text-left">
+                <thead class="bg-gray-50 border-b">
+                    <tr>
+                        <th class="p-4 font-semibold">Company</th>
+                        <th class="p-4 font-semibold text-right">Shares</th>
+                        <th class="p-4 font-semibold text-right">Avg. Cost</th>
+                        <th class="p-4 font-semibold text-right">Current Price</th>
+                        <th class="p-4 font-semibold text-right">Total P/L</th>
+                        <th class="p-4 font-semibold text-right">% P/L</th>
+                        <th class="p-4 font-semibold text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stock in portfolio %}
+                    <tr class="border-b hover:bg-gray-50">
+                        <td class="p-4"><div class="font-bold text-lg">{{ stock.name }}</div><div class="text-sm text-gray-500">{{ stock.symbol }}</div></td>
+                        <td class="p-4 text-right">{{ "%.4f"|format(stock.shares) }}</td>
+                        <td class="p-4 text-right">${{ "%.2f"|format(stock.avg_cost_per_share) }}</td>
+                        <td class="p-4 text-right font-semibold">${{ "%.2f"|format(stock.current_price) }}</td>
+                        <td class="p-4 text-right font-bold {{ 'text-green-600' if stock.total_pl >= 0 else 'text-red-600' }}">${{ "%.2f"|format(stock.total_pl) }}</td>
+                        <td class="p-4 text-right font-bold {{ 'text-green-600' if stock.pl_percentage >= 0 else 'text-red-600' }}">{{ "%.2f"|format(stock.pl_percentage) }}%</td>
+                        <td class="p-4 text-center">
+                            <div class="flex gap-4 justify-center">
+                                <a href="{{ url_for('edit_transaction', trans_id=stock.latest_transaction_id) }}" class="font-semibold text-blue-600 hover:underline">Edit</a>
+                                <form action="{{ url_for('delete_stock_holding', symbol=stock.symbol) }}" method="POST" onsubmit="return confirm('Delete all records for {{ stock.symbol }}?');">
+                                    <button type="submit" class="font-semibold text-red-600 hover:underline">Delete</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-center p-8 text-gray-500">Your portfolio is empty.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+    </div>
+
+    <script>
+        const ctx = document.getElementById('portfolioChart');
+        const chartLabels = {{ chart_labels|safe }};
+        const chartValues = {{ chart_values|safe }};
+        if (chartValues.length > 0) {
+            new Chart(ctx, {
+                type: 'doughnut', data: { labels: chartLabels, datasets: [{
+                        label: 'Portfolio Value', data: chartValues,
+                        backgroundColor: ['#3b82f6', '#10b981', '#f97316', '#ef4444', '#8b5cf6', '#ec4899', '#64748b', '#f59e0b'],
+                        hoverOffset: 4 }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' },
+                        tooltip: { callbacks: { label: function(c) {
+                            let label = c.label || ''; if (label) { label += ': '; }
+                            if (c.parsed !== null) { label += new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(c.parsed); }
+                            return label; } } } } } });
+        } else {
+            const context = ctx.getContext('2d');
+            ctx.width = ctx.parentElement.offsetWidth; ctx.height = ctx.parentElement.offsetHeight;
+            context.textAlign = 'center'; context.textBaseline = 'middle';
+            context.font = '16px sans-serif'; context.fillStyle = '#6b7280';
+            context.fillText('No data to display.', ctx.width / 2, ctx.height / 2);
+        }
+    </script>
+</body>
+</html>

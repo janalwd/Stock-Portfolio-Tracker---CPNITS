@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Stocks</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <style>
+        .flash-message { animation: fadeInOut 5s forwards; opacity: 0; }
+        @keyframes fadeInOut {
+            0%, 100% { opacity: 0; transform: translateY(-20px); }
+            10%, 90% { opacity: 1; transform: translateY(0); }
+        }
+        .number { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+        .metric-card { @apply bg-white p-4 rounded-lg shadow-sm; }
+        .metric-label { @apply text-sm text-gray-500; }
+        .metric-value { @apply text-lg font-bold text-gray-800 number; }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        
+        <header class="flex flex-wrap justify-between items-center mb-8 gap-4">
+            <div>
+                <h1 class="text-4xl font-bold text-gray-900">Stock Market Search</h1>
+                <p class="text-gray-600">Find real-time financial data for any public company.</p>
+            </div>
+            <nav class="flex items-center gap-4 bg-gray-200 p-1 rounded-lg">
+                <a href="{{ url_for('index') }}" class="text-gray-600 font-semibold py-2 px-4 rounded-md hover:bg-gray-300">Holdings</a>
+                <a href="{{ url_for('transaction_list') }}" class="text-gray-600 font-semibold py-2 px-4 rounded-md hover:bg-gray-300">Transactions</a>
+                <a href="{{ url_for('dividends_list') }}" class="text-gray-600 font-semibold py-2 px-4 rounded-md hover:bg-gray-300">Dividends</a>
+                <a href="{{ url_for('search_stocks_api') }}" class="bg-white text-gray-800 font-bold py-2 px-4 rounded-md shadow">Search</a>
+            </nav>
+        </header>
+
+        <div class="fixed top-5 right-5 z-50">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% for category, message in messages %}
+                    <div class="flash-message p-4 mb-2 rounded-lg shadow-lg text-white bg-red-500">{{ message }}</div>
+                {% endfor %}
+            {% endwith %}
+        </div>
+        
+        <section class="max-w-xl mx-auto bg-white p-6 rounded-xl shadow-md mb-8">
+            <h2 class="text-2xl font-bold mb-4">Search by Ticker Symbol</h2>
+            <form action="{{ url_for('search_stocks_api') }}" method="POST" class="flex gap-2">
+                <input type="text" name="ticker" placeholder="e.g., TSLA, GOOGL" class="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-600" autofocus>
+                <button type="submit" class="bg-gray-700 text-white font-bold py-3 px-5 rounded-lg hover:bg-gray-800 transition">Search</button>
+            </form>
+        </section>
+        
+        {% if stock %}
+        <section class="max-w-5xl mx-auto space-y-8">
+            <div class="bg-white p-6 rounded-xl shadow-md">
+                <h2 class="text-3xl font-bold">{{ stock.longName }} (<span class="text-blue-600">{{ stock.symbol }}</span>)</h2>
+                <p class="text-4xl font-bold mt-2 number">${{ "%.2f"|format(stock.currentPrice) }}</p>
+            </div>
+            
+            <!-- NEW: Price Chart Section -->
+            <div class="bg-white p-6 rounded-xl shadow-md">
+                <h3 class="text-xl font-bold mb-4">Price History (1 Year)</h3>
+                <div class="relative h-96">
+                    <canvas id="priceChart"></canvas>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="metric-card"><div class="metric-label">P/E Ratio</div><div class="metric-value">{{ "%.2f"|format(stock.trailingPE) if stock.trailingPE else 'N/A' }}</div></div>
+                <div class="metric-card"><div class="metric-label">Dividend Yield</div><div class="metric-value">{{ "%.2f"|format(stock.dividendYield * 100) if stock.dividendYield else 'N/A' }}%</div></div>
+                <div class="metric-card"><div class="metric-label">Profit Margin</div><div class="metric-value">{{ "%.2f"|format(stock.profitMargins * 100) if stock.profitMargins else 'N/A' }}%</div></div>
+                <div class="metric-card"><div class="metric-label">Market Cap</div><div class="metric-value">{{ stock.marketCap }}</div></div>
+                <div class="metric-card"><div class="metric-label">Total Revenue</div><div class="metric-value">{{ stock.totalRevenue }}</div></div>
+                <div class="metric-card"><div class="metric-label">Free Cash Flow</div><div class="metric-value">{{ stock.freeCashflow }}</div></div>
+                <div class="metric-card"><div class="metric-label">52-Wk High</div><div class="metric-value">${{ "%.2f"|format(stock.fiftyTwoWeekHigh) if stock.fiftyTwoWeekHigh else 'N/A' }}</div></div>
+                <div class="metric-card"><div class="metric-label">52-Wk Low</div><div class="metric-value">${{ "%.2f"|format(stock.fiftyTwoWeekLow) if stock.fiftyTwoWeekLow else 'N/A' }}</div></div>
+            </div>
+
+            <div class="bg-white p-6 rounded-xl shadow-md">
+                <h3 class="text-xl font-bold mb-3">Business Summary</h3>
+                <p class="text-gray-700 leading-relaxed">{{ stock.summary }}</p>
+            </div>
+        </section>
+        {% endif %}
+    </div>
+
+    <!-- NEW: Chart.js initialization script -->
+    <script>
+        {% if price_history %}
+        const ctx = document.getElementById('priceChart');
+        const priceLabels = {{ price_history.dates|tojson }};
+        const priceData = {{ price_history.prices|tojson }};
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: priceLabels,
+                datasets: [{
+                    label: 'Closing Price',
+                    data: priceData,
+                    borderColor: '#3b82f6', // blue-500
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    fill: true,
+                    tension: 0.1,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: { unit: 'month' },
+                        ticks: { source: 'auto' }
+                    },
+                    y: {
+                        ticks: { callback: value => '$' + value.toFixed(2) }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: function(context) {
+                                return `Price: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(context.parsed.y)}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        {% endif %}
+    </script>
+</body>
+</html>
