@@ -7,6 +7,7 @@ DB_FILE = "portfolio.db"
 def get_db_connection():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
@@ -27,6 +28,11 @@ def create_tables():
             password_hash TEXT NOT NULL
         )
     ''')
+
+    existing_columns = [row[1] for row in cursor.execute("PRAGMA table_info(transactions)").fetchall()]
+    if existing_columns and "user_id" not in existing_columns:
+        cursor.execute("DROP TABLE transactions")
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
