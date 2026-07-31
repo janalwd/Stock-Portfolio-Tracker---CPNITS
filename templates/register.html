@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create account | Stock Portfolio Tracker</title>
+  <style>
+    body{margin:0;font-family:Arial,sans-serif;background:#f4f6f8;color:#17202a;display:grid;place-items:center;min-height:100vh}
+    .card{width:min(420px,calc(100% - 40px));background:#fff;padding:32px;border-radius:14px;box-shadow:0 12px 35px rgba(0,0,0,.1)}
+    h1{margin:0 0 8px} p{color:#667085} label{display:block;margin:18px 0 7px;font-weight:700}
+    input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #ccd2da;border-radius:8px;font-size:16px}
+    button{width:100%;margin-top:22px;padding:12px;border:0;border-radius:8px;background:#17202a;color:white;font-size:16px;font-weight:700;cursor:pointer}
+    a{color:#17202a;font-weight:700}.message{padding:10px 12px;border-radius:8px;background:#fdecec;color:#9b1c1c;margin:14px 0}
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Create account</h1>
+    <p>Your portfolio will be private to this account.</p>
+    {% with messages = get_flashed_messages() %}{% if messages %}{% for message in messages %}<div class="message">{{ message }}</div>{% endfor %}{% endif %}{% endwith %}
+    <form method="post">
+      <label for="username">Username</label>
+      <input id="username" name="username" minlength="3" autocomplete="username" required>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" minlength="8" autocomplete="new-password" required>
+      <label for="confirm_password">Confirm password</label>
+      <input id="confirm_password" name="confirm_password" type="password" minlength="8" autocomplete="new-password" required>
+      <button type="submit">Create account</button>
+    </form>
+    <p>Already registered? <a href="{{ url_for('login') }}">Log in</a></p>
+  </main>
+</body>
+</html>
